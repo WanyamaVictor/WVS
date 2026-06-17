@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WVS Report - https://example.com</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background:#f4f6f8; color:#222; }
+  header { background:#1f2d3d; color:#fff; padding:24px 32px; }
+  header h1 { margin:0 0 4px; font-size:20px; }
+  header .target { font-family:monospace; opacity:.85; }
+  .wrap { padding:24px 32px; }
+  .score { font-size:42px; font-weight:700; }
+  .chip, .badge { color:#fff; padding:3px 10px; border-radius:12px; font-size:12px; font-weight:600; display:inline-block; }
+  .chip { margin-right:8px; }
+  table { width:100%; border-collapse:collapse; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.1); border-radius:8px; overflow:hidden; }
+  th, td { text-align:left; padding:10px 12px; border-bottom:1px solid #eee; vertical-align:top; font-size:13px; }
+  th { background:#fafbfc; font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:#555; }
+  .mono { font-family:monospace; word-break:break-all; max-width:280px; }
+  .meta { color:#666; font-size:13px; margin:8px 0 20px; }
+  .empty { padding:24px; background:#fff; border-radius:8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Web Vulnerability Scan Report</h1>
+  <div class="target">https://example.com</div>
+</header>
+<div class="wrap">
+  <div class="score">Risk score: 38/100</div>
+  <div class="meta">
+    Crawled 0 page(s) &middot; 7 finding(s)
+    &middot; 2026-06-17 08:41:21 UTC &rarr; 2026-06-17 08:41:23 UTC
+  </div>
+  <div style="margin-bottom:20px"><span class="chip" style="background:#7c1d1d">CRITICAL: 0</span><span class="chip" style="background:#c0392b">HIGH: 0</span><span class="chip" style="background:#e67e22">MEDIUM: 3</span><span class="chip" style="background:#f1c40f">LOW: 3</span><span class="chip" style="background:#3498db">INFO: 1</span></div>
+  
+    <table>
+      <thead><tr>
+        <th>Severity</th><th>Type</th><th>Endpoint</th><th>Param</th>
+        <th>Description</th><th>Payload</th><th>Evidence</th>
+      </tr></thead>
+      <tbody>
+            <tr>
+              <td><span class="badge" style="background:#e67e22">MEDIUM</span></td>
+              <td>Missing Security Header</td>
+              <td class="mono">https://example.com/</td>
+              <td>content-security-policy</td>
+              <td>Content-Security-Policy is missing; mitigates XSS and data injection.</td>
+              <td class="mono">-</td>
+              <td class="mono">-</td>
+            </tr>
+            <tr>
+              <td><span class="badge" style="background:#e67e22">MEDIUM</span></td>
+              <td>Missing Security Header</td>
+              <td class="mono">https://example.com/</td>
+              <td>x-frame-options</td>
+              <td>X-Frame-Options is missing; protects against clickjacking.</td>
+              <td class="mono">-</td>
+              <td class="mono">-</td>
+            </tr>
+            <tr>
+              <td><span class="badge" style="background:#e67e22">MEDIUM</span></td>
+              <td>Missing Security Header</td>
+              <td class="mono">https://example.com/</td>
+              <td>strict-transport-security</td>
+              <td>Strict-Transport-Security (HSTS) is missing; enforces HTTPS.</td>
+              <td class="mono">-</td>
+              <td class="mono">-</td>
+            </tr>
+            <tr>
+              <td><span class="badge" style="background:#f1c40f">LOW</span></td>
+              <td>Missing Security Header</td>
+              <td class="mono">https://example.com/</td>
+              <td>x-content-type-options</td>
+              <td>X-Content-Type-Options is missing; should be &#x27;nosniff&#x27;.</td>
+              <td class="mono">-</td>
+              <td class="mono">-</td>
+            </tr>
+            <tr>
+              <td><span class="badge" style="background:#f1c40f">LOW</span></td>
+              <td>Missing Security Header</td>
+              <td class="mono">https://example.com/</td>
+              <td>referrer-policy</td>
+              <td>Referrer-Policy is missing; controls referrer leakage.</td>
+              <td class="mono">-</td>
+              <td class="mono">-</td>
+            </tr>
+            <tr>
+              <td><span class="badge" style="background:#f1c40f">LOW</span></td>
+              <td>Missing Security Header</td>
+              <td class="mono">https://example.com/</td>
+              <td>permissions-policy</td>
+              <td>Permissions-Policy is missing; restricts powerful browser features.</td>
+              <td class="mono">-</td>
+              <td class="mono">-</td>
+            </tr>
+            <tr>
+              <td><span class="badge" style="background:#3498db">INFO</span></td>
+              <td>Information Disclosure</td>
+              <td class="mono">https://example.com/</td>
+              <td>server</td>
+              <td>Response exposes &#x27;server: cloudflare&#x27;, revealing server/technology details useful to an attacker.</td>
+              <td class="mono">-</td>
+              <td class="mono">server: cloudflare</td>
+            </tr></tbody>
+    </table>
+  <p class="meta">Generated by WVS. For authorized testing only.</p>
+</div>
+</body>
+</html>

@@ -1,0 +1,98 @@
+"""A small, same-domain crawler that discovers pages, links and forms."""
+
+from __future__ import annotations
+
+from collections import deque
+from dataclasses import dataclass, field
+from typing import Optional
+from urllib.parse import urljoin, urlparse, urldefrag, parse_qs
+
+from bs4 import BeautifulSoup
+
+from .http_client import HttpClient
+
+
+@dataclass
+class Form:
+    """A discovered HTML form."""
+
+    action: str                       # absolute URL the form submits to
+    method: str                       # "get" or "post"
+    inputs: dict = field(default_factory=dict)  # name -> default value
+
+
+@dataclass
+class Page:
+    """A crawled page with the injectable surface we extracted from it."""
+
+    url: str
+    params: dict = field(default_factory=dict)  # query params: name -> value
+    forms: list = field(default_factory=list)   # list[Form]
+
+
+class Crawler:
+    def __init__(self, client: HttpClient, max_pages: int = 50, same_domain: bool = True):
+        self.client = client
+        self.max_pages = max_pages
+        self.same_domain = same_domain
+
+    def _in_scope(self, base_netloc: str, url: str) -> bool:
+        if not self.same_domain:
+            return True
+        return urlparse(url).netloc == base_netloc
+
+    @staticmethod
+    def _normalize(url: str) -> str:
+        # Drop fragments so #anchors don't create duplicate pages.
+        return urldefrag(url)[0]
+
+    def _parse_forms(self, page_url: str, soup: BeautifulSoup) -> list:
+        forms = []
+        for form in soup.find_all("form"):
+            action = form.get("action") or page_url
+            method = (form.get("method") or "get").lower()
+            inputs: dict = {}
+            for field_el in form.find_all(["input", "textarea", "select"]):
+                name = field_el.get("name")
+                if not name:
+                    continue
+                inputs[name] = field_el.get("value", "")
+            forms.append(
+                Form(action=urljoin(page_url, action), method=method, inputs=inputs)
+            )
+        return forms
+
+    def crawl(self, start_url: str) -> list:
+        """BFS crawl from start_url, returning a list of Page objects."""
+        base_netloc = urlparse(start_url).netloc
+        seen: set = set()
+        pages: list = []
+        queue: deque = deque([self._normalize(start_url)])
+
+        while queue and len(pages) < self.max_pages:
+            url = queue.popleft()
+            if url in seen:
+                continue
+            seen.add(url)
+
+            resp = self.client.get(url)
+            if resp is None or "text/html" not in resp.headers.get("Content-Type", ""):
+                # Still record query params for non-HTML so they can be probed.
+                params = {k: v[0] for k, v in parse_qs(urlparse(url).query).items()}
+                if params:
+                    pages.append(Page(url=url, params=params))
+                continue
+
+            soup = BeautifulSoup(resp.text, "html.parser")
+            params = {k: v[0] for k, v in parse_qs(urlparse(url).query).items()}
+            forms = self._parse_forms(url, soup)
+            pages.append(Page(url=url, params=params, forms=forms))
+
+            for a in soup.find_all("a", href=True):
+                link = self._normalize(urljoin(url, a["href"]))
+                if not link.startswith(("http://", "https://")):
+                    continue
+                if link not in seen and self._in_scope(base_netloc, link):
+                    queue.append(link)
+
+        return pages

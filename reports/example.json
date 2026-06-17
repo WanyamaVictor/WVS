@@ -1,0 +1,79 @@
+{
+  "target": "https://example.com",
+  "started_at": "2026-06-17 08:41:21 UTC",
+  "finished_at": "2026-06-17 08:41:23 UTC",
+  "pages_crawled": 0,
+  "risk_score": 38,
+  "counts_by_severity": {
+    "info": 1,
+    "low": 3,
+    "medium": 3,
+    "high": 0,
+    "critical": 0
+  },
+  "findings": [
+    {
+      "type": "Missing Security Header",
+      "severity": "medium",
+      "endpoint": "https://example.com/",
+      "description": "Content-Security-Policy is missing; mitigates XSS and data injection.",
+      "payload": "",
+      "evidence": "",
+      "parameter": "content-security-policy"
+    },
+    {
+      "type": "Missing Security Header",
+      "severity": "medium",
+      "endpoint": "https://example.com/",
+      "description": "X-Frame-Options is missing; protects against clickjacking.",
+      "payload": "",
+      "evidence": "",
+      "parameter": "x-frame-options"
+    },
+    {
+      "type": "Missing Security Header",
+      "severity": "medium",
+      "endpoint": "https://example.com/",
+      "description": "Strict-Transport-Security (HSTS) is missing; enforces HTTPS.",
+      "payload": "",
+      "evidence": "",
+      "parameter": "strict-transport-security"
+    },
+    {
+      "type": "Missing Security Header",
+      "severity": "low",
+      "endpoint": "https://example.com/",
+      "description": "X-Content-Type-Options is missing; should be 'nosniff'.",
+      "payload": "",
+      "evidence": "",
+      "parameter": "x-content-type-options"
+    },
+    {
+      "type": "Missing Security Header",
+      "severity": "low",
+      "endpoint": "https://example.com/",
+      "description": "Referrer-Policy is missing; controls referrer leakage.",
+      "payload": "",
+      "evidence": "",
+      "parameter": "referrer-policy"
+    },
+    {
+      "type": "Missing Security Header",
+      "severity": "low",
+      "endpoint": "https://example.com/",
+      "description": "Permissions-Policy is missing; restricts powerful browser features.",
+      "payload": "",
+      "evidence": "",
+      "parameter": "permissions-policy"
+    },
+    {
+      "type": "Information Disclosure",
+      "severity": "info",
+      "endpoint": "https://example.com/",
+      "description": "Response exposes 'server: cloudflare', revealing server/technology details useful to an attacker.",
+      "payload": "",
+      "evidence": "server: cloudflare",
+      "parameter": "server"
+    }
+  ]
+}
