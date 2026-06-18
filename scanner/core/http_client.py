@@ -50,7 +50,7 @@ class HttpClient:
         delay: float = 0.0,
         user_agent: str = DEFAULT_UA,
         verify_tls: bool = True,
-        max_retries: int = 1,
+        max_retries: int = 0,
         workers: int = 8,
     ) -> None:
         self.timeout = timeout

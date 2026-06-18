@@ -73,6 +73,28 @@
     if (target) target.textContent = "» " + tgt;
 
     var es = new EventSource("/scan/stream/" + jobId);
+    var poll = null;
+    var finished = false;
+
+    function done(scanId) {
+      if (finished) return;
+      finished = true;
+      if (poll) clearInterval(poll);
+      try { es.close(); } catch (_) {}
+      setProgress(100);
+      label.textContent = "complete — opening report…";
+      window.location = "/scan/" + scanId;
+    }
+    function failed(msg) {
+      if (finished) return;
+      finished = true;
+      if (poll) clearInterval(poll);
+      try { es.close(); } catch (_) {}
+      showError(msg || "Scan failed.");
+      btn.disabled = false;
+      btn.textContent = "Launch Scan";
+    }
+
     es.onmessage = function (ev) {
       var d;
       try { d = JSON.parse(ev.data); } catch (_) { return; }
@@ -88,26 +110,26 @@
         setProgress(98);
         label.textContent = "finalizing…";
       } else if (d.type === "complete") {
-        setProgress(100);
-        label.textContent = "complete — risk " + d.risk_score + "/100, " +
-          d.findings + " finding(s). Opening report…";
-        es.close();
-        window.location = "/scan/" + d.scan_id;
+        done(d.scan_id);
       } else if (d.type === "error") {
-        es.close();
-        showError(d.message || "Scan failed.");
-        btn.disabled = false;
-        btn.textContent = "Launch Scan";
+        failed(d.message);
       }
     };
-    es.onerror = function () {
-      // Stream closed (often right after redirect); only surface if still running.
-      if (btn.disabled && fill.style.width !== "100%") {
-        showError("Connection to scan stream lost.");
-        btn.disabled = false;
-        btn.textContent = "Launch Scan";
-      }
-      es.close();
-    };
+
+    // The SSE stream is best-effort for the live log. Completion is guaranteed
+    // by polling /scan/status, so a dropped/idle connection on a long scan can
+    // never leave the UI stuck on "Scanning…".
+    es.onerror = function () { /* let it reconnect; polling drives completion */ };
+
+    poll = setInterval(function () {
+      if (finished) return;
+      fetch("/scan/status/" + jobId)
+        .then(function (r) { return r.json(); })
+        .then(function (s) {
+          if (s.status === "done") done(s.scan_id);
+          else if (s.status === "error") failed(s.error);
+        })
+        .catch(function () { /* transient; try again next tick */ });
+    }, 3000);
   }
 })();

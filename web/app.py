@@ -49,11 +49,19 @@ SEV_RANK = {s: i for i, s in enumerate(SEVERITY_ORDER)}
 class Job:
     def __init__(self) -> None:
         self.queue: "queue.Queue[dict]" = queue.Queue()
+        self.status: str = "running"      # running | done | error
         self.scan_id: int | None = None
         self.error: str | None = None
 
 
 JOBS: dict[str, Job] = {}
+
+
+def _prune_jobs(keep: int = 20) -> None:
+    """Bound memory: drop the oldest finished jobs, keep all running ones."""
+    finished = [jid for jid, j in JOBS.items() if j.status != "running"]
+    for jid in finished[:-keep] if len(finished) > keep else []:
+        JOBS.pop(jid, None)
 
 
 def _as_float(value, default):
@@ -76,6 +84,7 @@ def _worker(job: Job, ns: Namespace, modules_str: str) -> None:
         result = run_scan(ns, on_event=job.queue.put)
         scan_id = storage.save_scan(result, modules=modules_str)
         job.scan_id = scan_id
+        job.status = "done"
         job.queue.put({
             "type": "complete",
             "scan_id": scan_id,
@@ -84,6 +93,7 @@ def _worker(job: Job, ns: Namespace, modules_str: str) -> None:
         })
     except Exception as exc:  # surface to the client instead of dying silently
         job.error = f"{exc.__class__.__name__}: {exc}"
+        job.status = "error"
         job.queue.put({"type": "error", "message": job.error})
 
 
@@ -130,6 +140,7 @@ def scan_start():
         no_verify_tls=request.form.get("no_verify_tls") == "on",
     )
 
+    _prune_jobs()
     job_id = uuid.uuid4().hex
     job = Job()
     JOBS[job_id] = job
@@ -146,14 +157,20 @@ def scan_stream(job_id: str):
         abort(404)
 
     def gen():
-        try:
-            while True:
-                event = job.queue.get()
-                yield f"data: {json.dumps(event)}\n\n"
-                if event.get("type") in ("complete", "error"):
+        # The job is intentionally NOT removed when this stream ends — completion
+        # is recorded on the job and also exposed via /scan/status, so a dropped
+        # connection during a long scan never loses the result.
+        while True:
+            try:
+                event = job.queue.get(timeout=15)
+            except queue.Empty:
+                yield ": keepalive\n\n"            # keep the connection from idling out
+                if job.status != "running":
                     break
-        finally:
-            JOBS.pop(job_id, None)
+                continue
+            yield f"data: {json.dumps(event)}\n\n"
+            if event.get("type") in ("complete", "error"):
+                break
 
     return Response(
         gen(),
@@ -164,6 +181,15 @@ def scan_stream(job_id: str):
             "Connection": "keep-alive",
         },
     )
+
+
+@app.route("/scan/status/<job_id>")
+def scan_status(job_id: str):
+    """Completion fallback the client polls in case the SSE stream drops."""
+    job = JOBS.get(job_id)
+    if job is None:
+        return {"status": "unknown"}, 404
+    return {"status": job.status, "scan_id": job.scan_id, "error": job.error}
 
 
 @app.route("/scan/<int:scan_id>")

@@ -153,6 +153,19 @@ def run_scan(args: argparse.Namespace, on_event=None) -> ScanResult:
         emit("phase", index=counter["i"], total=total_steps, label=label, module=module)
         print(f"{Fore.CYAN}[*]{Style.RESET_ALL} {label}...")
 
+    # Reachability gate: don't grind through every module against a host that
+    # isn't responding. Give it two quick attempts before giving up.
+    emit("log", message="checking target reachability")
+    reachable = any(client.get(args.target) is not None for _ in range(2))
+    if not reachable:
+        client.close()
+        result.finished_at = _now()
+        raise ConnectionError(
+            f"Target {args.target} did not respond within "
+            f"{args.timeout:.0f}s (unreachable, blocking the scanner, or too "
+            f"slow). Check the URL, raise --timeout, or try again."
+        )
+
     try:
         pages = []
         if needs_crawl:
@@ -202,7 +215,11 @@ def main(argv=None) -> int:
         return 3
 
     print(f"{Fore.GREEN}[+]{Style.RESET_ALL} Starting scan of {args.target}\n")
-    result = run_scan(args)
+    try:
+        result = run_scan(args)
+    except ConnectionError as exc:
+        print(f"{Fore.RED}[!]{Style.RESET_ALL} {exc}")
+        return 4
 
     # --- Summary ---
     print(f"\n{Style.BRIGHT}=== Results ==={Style.RESET_ALL}")
