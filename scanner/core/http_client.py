@@ -7,12 +7,24 @@ limiting and basic retry handling so the scanner modules stay simple.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 import requests
 
 DEFAULT_UA = "WVS/0.1 (Web Vulnerability Scanner; authorized testing only)"
+
+
+def _extract_set_cookie(resp) -> list:
+    """Return each individual Set-Cookie header value (requests merges them in .headers)."""
+    try:
+        values = resp.raw.headers.getlist("Set-Cookie")
+        if values:
+            return list(values)
+    except Exception:
+        pass
+    single = resp.headers.get("Set-Cookie")
+    return [single] if single else []
 
 
 @dataclass
@@ -25,6 +37,7 @@ class Response:
     text: str
     elapsed: float
     ok: bool
+    set_cookie: list = field(default_factory=list)  # individual Set-Cookie header values
 
 
 class HttpClient:
@@ -59,6 +72,7 @@ class HttpClient:
         params: Optional[dict] = None,
         data: Optional[dict] = None,
         allow_redirects: bool = True,
+        headers: Optional[dict] = None,
     ) -> Optional[Response]:
         """Perform a request, returning a normalized Response or None on failure."""
         last_exc: Optional[Exception] = None
@@ -72,6 +86,7 @@ class HttpClient:
                     data=data,
                     timeout=self.timeout,
                     allow_redirects=allow_redirects,
+                    headers=headers,
                 )
                 self._last_request_ts = time.monotonic()
                 return Response(
@@ -81,6 +96,7 @@ class HttpClient:
                     text=resp.text,
                     elapsed=resp.elapsed.total_seconds(),
                     ok=resp.ok,
+                    set_cookie=_extract_set_cookie(resp),
                 )
             except requests.RequestException as exc:
                 last_exc = exc
@@ -92,11 +108,13 @@ class HttpClient:
         _ = last_exc
         return None
 
-    def get(self, url: str, params: Optional[dict] = None, **kwargs) -> Optional[Response]:
-        return self.request("GET", url, params=params, **kwargs)
+    def get(self, url: str, params: Optional[dict] = None, headers: Optional[dict] = None,
+            **kwargs) -> Optional[Response]:
+        return self.request("GET", url, params=params, headers=headers, **kwargs)
 
-    def post(self, url: str, data: Optional[dict] = None, **kwargs) -> Optional[Response]:
-        return self.request("POST", url, data=data, **kwargs)
+    def post(self, url: str, data: Optional[dict] = None, headers: Optional[dict] = None,
+             **kwargs) -> Optional[Response]:
+        return self.request("POST", url, data=data, headers=headers, **kwargs)
 
     def close(self) -> None:
         self.session.close()

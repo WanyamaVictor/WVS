@@ -38,6 +38,8 @@ class Finding:
     payload: str = ""    # the payload/probe used, if any
     evidence: str = ""   # snippet of response that justifies the finding
     parameter: str = ""  # affected request parameter, if any
+    remediation: str = ""  # how to fix it (filled in by the remediation catalog)
+    reference: str = ""    # OWASP/CWE label + link, if available
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)

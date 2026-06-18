@@ -22,19 +22,46 @@ except Exception:  # pragma: no cover - colorama is optional at runtime
             return ""
     Fore = Style = _Dummy()  # type: ignore
 
+from .core import remediation
 from .core.crawler import Crawler
 from .core.http_client import HttpClient
 from .core.models import ScanResult, Severity
 from .report import report_generator
 from .scanners import (
     admin_panel_scan,
+    cookies as cookies_scan,
+    cors as cors_scan,
+    csrf as csrf_scan,
     directory_scan,
+    discovery as discovery_scan,
     headers as headers_scan,
+    open_redirect,
     sql_injection,
+    tls as tls_scan,
     xss,
 )
 
-ALL_MODULES = ["headers", "directory", "admin", "sqli", "xss"]
+# Modules that probe the target URL directly.  key -> (scan_fn, human label)
+TARGET_MODULES = {
+    "headers":   (headers_scan.scan,     "Checking security headers"),
+    "directory": (directory_scan.scan,   "Scanning for sensitive paths"),
+    "admin":     (admin_panel_scan.scan, "Looking for admin/login panels"),
+    "cookies":   (cookies_scan.scan,     "Inspecting cookie attributes"),
+    "cors":      (cors_scan.scan,        "Testing CORS policy"),
+    "tls":       (tls_scan.scan,         "Checking TLS/SSL configuration"),
+    "discovery": (discovery_scan.scan,   "Discovering robots / security.txt"),
+}
+
+# Modules that operate on crawled pages (require a crawl first).
+PAGE_MODULES = {
+    "sqli":     (sql_injection.scan, "Testing for SQL injection"),
+    "xss":      (xss.scan,           "Testing for reflected XSS"),
+    "redirect": (open_redirect.scan, "Testing for open redirects"),
+    "csrf":     (csrf_scan.scan,     "Checking CSRF protection"),
+}
+
+# Canonical execution / display order.
+ALL_MODULES = list(TARGET_MODULES) + list(PAGE_MODULES)
 
 SEV_COLOR = {
     "critical": Fore.RED + Style.BRIGHT,
@@ -94,7 +121,13 @@ def _print_finding(f) -> None:
         print(f"           payload: {f.payload}")
 
 
-def run_scan(args: argparse.Namespace) -> ScanResult:
+def run_scan(args: argparse.Namespace, on_event=None) -> ScanResult:
+    """Run the selected modules.
+
+    ``on_event``, if given, is called with structured progress dicts so a UI can
+    show live progress: ``{"type": "phase"|"log"|"done", ...}``. The CLI leaves
+    it as ``None`` and relies on the printed output below.
+    """
     modules = _selected_modules(args.modules)
     client = HttpClient(
         timeout=args.timeout,
@@ -103,38 +136,48 @@ def run_scan(args: argparse.Namespace) -> ScanResult:
     )
     result = ScanResult(target=args.target, started_at=_now())
 
+    ordered = [m for m in ALL_MODULES if m in modules]
+    needs_crawl = any(m in PAGE_MODULES for m in ordered)
+    total_steps = len(ordered) + (1 if needs_crawl else 0)
+    counter = {"i": 0}
+
+    def emit(etype, **data):
+        if on_event is not None:
+            on_event({"type": etype, **data})
+
+    def begin(label, module=None):
+        counter["i"] += 1
+        emit("phase", index=counter["i"], total=total_steps, label=label, module=module)
+        print(f"{Fore.CYAN}[*]{Style.RESET_ALL} {label}...")
+
     try:
-        # Crawl first if any module needs request surfaces.
         pages = []
-        if any(m in modules for m in ("sqli", "xss")):
-            print(f"{Fore.CYAN}[*]{Style.RESET_ALL} Crawling (max {args.max_pages} pages)...")
+        if needs_crawl:
+            begin(f"Crawling (max {args.max_pages} pages)", "crawl")
             pages = Crawler(client, max_pages=args.max_pages).crawl(args.target)
             result.pages_crawled = len(pages)
-            print(f"    discovered {len(pages)} page(s).")
+            msg = f"discovered {len(pages)} page(s)"
+            print(f"    {msg}.")
+            emit("log", message=msg)
 
-        if "headers" in modules:
-            print(f"{Fore.CYAN}[*]{Style.RESET_ALL} Checking security headers...")
-            result.extend(headers_scan.scan(client, args.target))
-
-        if "directory" in modules:
-            print(f"{Fore.CYAN}[*]{Style.RESET_ALL} Scanning for sensitive paths...")
-            result.extend(directory_scan.scan(client, args.target))
-
-        if "admin" in modules:
-            print(f"{Fore.CYAN}[*]{Style.RESET_ALL} Looking for admin/login panels...")
-            result.extend(admin_panel_scan.scan(client, args.target))
-
-        if "sqli" in modules:
-            print(f"{Fore.CYAN}[*]{Style.RESET_ALL} Testing for SQL injection...")
-            result.extend(sql_injection.scan(client, pages))
-
-        if "xss" in modules:
-            print(f"{Fore.CYAN}[*]{Style.RESET_ALL} Testing for reflected XSS...")
-            result.extend(xss.scan(client, pages))
+        for key in ordered:
+            if key in TARGET_MODULES:
+                scan_fn, label = TARGET_MODULES[key]
+                begin(label, key)
+                before = len(result.findings)
+                result.extend(scan_fn(client, args.target))
+            else:
+                scan_fn, label = PAGE_MODULES[key]
+                begin(label, key)
+                before = len(result.findings)
+                result.extend(scan_fn(client, pages))
+            emit("log", message=f"{label}: {len(result.findings) - before} finding(s)")
     finally:
         client.close()
         result.finished_at = _now()
 
+    remediation.enrich(result.findings)
+    emit("done", risk_score=result.risk_score, findings=len(result.findings))
     return result
 
 
