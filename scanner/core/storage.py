@@ -121,6 +121,43 @@ def delete_scan(scan_id: int, db_path: str = DEFAULT_DB_PATH) -> bool:
         return cur.rowcount > 0
 
 
+def stats(db_path: str = DEFAULT_DB_PATH, recent_limit: int = 12) -> dict:
+    """Aggregate figures for the dashboard."""
+    init_db(db_path)
+    with _connect(db_path) as conn:
+        agg = conn.execute(
+            """
+            SELECT COUNT(*) AS scans,
+                   COALESCE(SUM(findings_count), 0) AS findings,
+                   COALESCE(AVG(risk_score), 0)     AS avg_risk,
+                   COALESCE(MAX(risk_score), 0)     AS max_risk,
+                   COALESCE(SUM(critical), 0) AS critical,
+                   COALESCE(SUM(high), 0)     AS high,
+                   COALESCE(SUM(medium), 0)   AS medium,
+                   COALESCE(SUM(low), 0)      AS low,
+                   COALESCE(SUM(info), 0)     AS info
+            FROM scans
+            """
+        ).fetchone()
+        recent = conn.execute(
+            f"SELECT {_SUMMARY_COLS} FROM scans ORDER BY id DESC LIMIT ?", (recent_limit,)
+        ).fetchall()
+
+    severity_totals = {s: agg[s] for s in
+                       ("critical", "high", "medium", "low", "info")}
+    recent_rows = [dict(r) for r in recent]
+    return {
+        "total_scans": agg["scans"],
+        "total_findings": agg["findings"],
+        "avg_risk": round(agg["avg_risk"]),
+        "max_risk": agg["max_risk"],
+        "last_scan": recent_rows[0] if recent_rows else None,
+        "severity_totals": severity_totals,
+        "recent": recent_rows,                 # newest first
+        "trend": list(reversed(recent_rows)),  # oldest first, for the chart
+    }
+
+
 def _finding_key(f: dict) -> tuple:
     return (f.get("type", ""), f.get("endpoint", ""), f.get("parameter", ""))
 

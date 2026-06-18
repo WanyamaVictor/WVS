@@ -27,10 +27,9 @@
         {{ scan.started_at }} &rarr; {{ scan.finished_at }}
       </div>
       <div class="export-row">
+        <a class="btn-sm" href="{{ url_for('export_pdf', scan_id=scan.id) }}">⭳ PDF</a>
         <a class="btn-sm" href="{{ url_for('export_html', scan_id=scan.id) }}">⭳ HTML</a>
         <a class="btn-sm" href="{{ url_for('export_json', scan_id=scan.id) }}">⭳ JSON</a>
-        <a class="btn-sm" href="{{ url_for('export_html', scan_id=scan.id) }}" target="_blank"
-           onclick="setTimeout(function(){},0)">⎙ Print / PDF</a>
         <a class="btn-sm" href="{{ url_for('history') }}">↪ compare in history</a>
       </div>
     </div>

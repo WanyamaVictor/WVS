@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}WVS // dashboard{% endblock %}
+
+{% block body %}
+  <div class="dash-actions">
+    <a class="btn-primary" href="{{ url_for('console') }}">+ New Scan</a>
+  </div>
+
+  <!-- ===================== STAT CARDS ===================== -->
+  <div class="cards">
+    <div class="card">
+      <div class="card-n">{{ stats.total_scans }}</div>
+      <div class="card-l">total scans</div>
+    </div>
+    <div class="card">
+      <div class="card-n">{{ stats.total_findings }}</div>
+      <div class="card-l">vulnerabilities found</div>
+    </div>
+    <div class="card">
+      <div class="card-n accent">{{ stats.avg_risk }}<span class="card-u">/100</span></div>
+      <div class="card-l">average risk</div>
+    </div>
+    <div class="card">
+      <div class="card-n">{{ stats.max_risk }}<span class="card-u">/100</span></div>
+      <div class="card-l">peak risk</div>
+    </div>
+  </div>
+
+  {% if stats.total_scans %}
+  <div class="dash-grid">
+    <!-- ===================== SEVERITY CHART ===================== -->
+    <div class="panel">
+      <div class="panel-head">vulnerabilities by severity</div>
+      <div class="panel-body">
+        {% set sev_max = (stats.severity_totals.values()|max) or 1 %}
+        <div class="hchart">
+          {% for sev in severity_order %}
+          {% set v = stats.severity_totals[sev] %}
+          <div class="hrow">
+            <div class="hlabel s-{{ sev }}">{{ sev }}</div>
+            <div class="htrack">
+              <div class="hbar s-{{ sev }}" style="width: {{ (v / sev_max * 100)|round(1) }}%"></div>
+            </div>
+            <div class="hval">{{ v }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== RISK TREND ===================== -->
+    <div class="panel">
+      <div class="panel-head">risk score over recent scans</div>
+      <div class="panel-body">
+        <div class="vchart">
+          {% for s in stats.trend %}
+          <div class="vcol">
+            <div class="vbar-wrap">
+              <div class="vbar r{{ (s.risk_score // 25) }}" style="height: {{ s.risk_score }}%"
+                   title="scan #{{ s.id }} — risk {{ s.risk_score }}"></div>
+            </div>
+            <div class="vlabel">#{{ s.id }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="vscale"><span>100</span><span>50</span><span>0</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== RECENT ===================== -->
+  <div class="panel">
+    <div class="panel-head">recent scans</div>
+    <div class="panel-body" style="padding:0">
+      <table class="data">
+        <thead><tr><th>#</th><th>target</th><th>risk</th><th>findings</th><th>when</th><th></th></tr></thead>
+        <tbody>
+          {% for s in stats.recent %}
+          <tr>
+            <td class="mono">{{ s.id }}</td>
+            <td class="mono">{{ s.target }}</td>
+            <td><span class="riskpill r{{ (s.risk_score // 25) }}">{{ s.risk_score }}</span></td>
+            <td>{{ s.findings_count }}</td>
+            <td class="dim">{{ s.created_at }}</td>
+            <td><a href="{{ url_for('scan_view', scan_id=s.id) }}">open »</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="panel">
+    <div class="panel-head">no data yet</div>
+    <div class="panel-body">
+      <div class="empty">No scans recorded. Run your first one from the
+        <a href="{{ url_for('console') }}">console</a>.</div>
+    </div>
+  </div>
+  {% endif %}
+{% endblock %}

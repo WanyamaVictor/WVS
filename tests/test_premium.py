@@ -109,3 +109,27 @@ def test_storage_save_get_compare_delete():
 
     assert storage.delete_scan(id1, db_path=db) is True
     assert len(storage.list_scans(db_path=db)) == 1
+
+
+def test_storage_stats_aggregates():
+    db = os.path.join(tempfile.gettempdir(), "wvs_pytest_stats.db")
+    if os.path.exists(db):
+        os.remove(db)
+    for sev in (Severity.HIGH, Severity.LOW):
+        r = ScanResult(target="http://x", started_at="a", finished_at="b")
+        r.add(Finding(type="X", severity=sev, endpoint="http://x", description="d"))
+        storage.save_scan(r, db_path=db)
+    st = storage.stats(db_path=db)
+    assert st["total_scans"] == 2
+    assert st["total_findings"] == 2
+    assert st["severity_totals"]["high"] == 1 and st["severity_totals"]["low"] == 1
+    assert len(st["trend"]) == 2
+
+
+def test_get_many_preserves_order(mocker):
+    from scanner.core.http_client import HttpClient
+    c = HttpClient(workers=4)
+    mocker.patch.object(c, "get", side_effect=lambda u, **k: u)
+    urls = [f"http://x/{i}" for i in range(20)]
+    assert c.get_many(urls) == urls
+    c.close()

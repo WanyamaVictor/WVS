@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import deque
 from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import urljoin, urlparse, urldefrag, parse_qs
@@ -63,36 +62,46 @@ class Crawler:
         return forms
 
     def crawl(self, start_url: str) -> list:
-        """BFS crawl from start_url, returning a list of Page objects."""
+        """BFS crawl from start_url, returning a list of Page objects.
+
+        Each BFS level's frontier is fetched concurrently (via the client's
+        worker pool), which is much faster than one request at a time while
+        preserving breadth-first ordering and the page limit.
+        """
         base_netloc = urlparse(start_url).netloc
-        seen: set = set()
+        start = self._normalize(start_url)
+        seen: set = {start}
         pages: list = []
-        queue: deque = deque([self._normalize(start_url)])
+        frontier: list = [start]
 
-        while queue and len(pages) < self.max_pages:
-            url = queue.popleft()
-            if url in seen:
-                continue
-            seen.add(url)
+        while frontier and len(pages) < self.max_pages:
+            # Never fetch more than the remaining page budget.
+            capacity = self.max_pages - len(pages)
+            batch, frontier = frontier[:capacity], frontier[capacity:]
+            responses = self.client.get_many(batch)
+            next_frontier: list = []
 
-            resp = self.client.get(url)
-            if resp is None or "text/html" not in resp.headers.get("Content-Type", ""):
-                # Still record query params for non-HTML so they can be probed.
-                params = {k: v[0] for k, v in parse_qs(urlparse(url).query).items()}
-                if params:
-                    pages.append(Page(url=url, params=params))
-                continue
-
-            soup = BeautifulSoup(resp.text, "html.parser")
-            params = {k: v[0] for k, v in parse_qs(urlparse(url).query).items()}
-            forms = self._parse_forms(url, soup)
-            pages.append(Page(url=url, params=params, forms=forms))
-
-            for a in soup.find_all("a", href=True):
-                link = self._normalize(urljoin(url, a["href"]))
-                if not link.startswith(("http://", "https://")):
+            for url, resp in zip(batch, responses):
+                if resp is None or "text/html" not in resp.headers.get("Content-Type", ""):
+                    # Still record query params for non-HTML so they can be probed.
+                    params = {k: v[0] for k, v in parse_qs(urlparse(url).query).items()}
+                    if params:
+                        pages.append(Page(url=url, params=params))
                     continue
-                if link not in seen and self._in_scope(base_netloc, link):
-                    queue.append(link)
+
+                soup = BeautifulSoup(resp.text, "html.parser")
+                params = {k: v[0] for k, v in parse_qs(urlparse(url).query).items()}
+                forms = self._parse_forms(url, soup)
+                pages.append(Page(url=url, params=params, forms=forms))
+
+                for a in soup.find_all("a", href=True):
+                    link = self._normalize(urljoin(url, a["href"]))
+                    if not link.startswith(("http://", "https://")):
+                        continue
+                    if link not in seen and self._in_scope(base_netloc, link):
+                        seen.add(link)
+                        next_frontier.append(link)
+
+            frontier.extend(next_frontier)
 
         return pages

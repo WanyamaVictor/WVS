@@ -33,9 +33,10 @@ def scan(client: HttpClient, target: str) -> list:
 
     soft_404, baseline_len = _looks_like_soft_404(client, base)
 
-    for path in COMMON_PATHS:
-        url = urljoin(base, path)
-        resp = client.get(url, allow_redirects=False)
+    urls = [urljoin(base, path) for path in COMMON_PATHS]
+    responses = client.get_many(urls, allow_redirects=False)
+
+    for path, resp in zip(COMMON_PATHS, responses):
         if resp is None:
             continue
 

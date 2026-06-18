@@ -95,6 +95,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--max-pages", type=int, default=40, help="Crawler page limit.")
     p.add_argument("--timeout", type=float, default=10.0, help="Per-request timeout (s).")
     p.add_argument("--delay", type=float, default=0.0, help="Delay between requests (s).")
+    p.add_argument("--workers", type=int, default=8,
+                   help="Concurrent request workers (forced to 1 when --delay is set).")
     p.add_argument("--no-verify-tls", action="store_true", help="Disable TLS verification.")
     p.add_argument("--json", dest="json_path", help="Write JSON report to this path.")
     p.add_argument("--html", dest="html_path", help="Write HTML report to this path.")
@@ -133,6 +135,7 @@ def run_scan(args: argparse.Namespace, on_event=None) -> ScanResult:
         timeout=args.timeout,
         delay=args.delay,
         verify_tls=not args.no_verify_tls,
+        workers=getattr(args, "workers", 8),
     )
     result = ScanResult(target=args.target, started_at=_now())
 

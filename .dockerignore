@@ -1,0 +1,11 @@
+.git
+.gitignore
+__pycache__/
+*.py[cod]
+.pytest_cache/
+venv/
+.venv/
+reports/wvs_history.db
+reports/scan.*
+tmp_*.py
+*.md

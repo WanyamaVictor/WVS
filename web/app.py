@@ -95,10 +95,17 @@ def _sort_findings(findings: list) -> list:
 # Routes
 # --------------------------------------------------------------------------- #
 @app.route("/")
-def index():
+def dashboard():
+    return render_template(
+        "dashboard.html", stats=storage.stats(), severity_order=SEVERITY_ORDER,
+    )
+
+
+@app.route("/console")
+def console():
     recent = storage.list_scans(limit=5)
     return render_template(
-        "index.html", all_modules=ALL_MODULES, recent=recent,
+        "console.html", all_modules=ALL_MODULES, recent=recent,
     )
 
 
@@ -217,6 +224,72 @@ def export_html(scan_id: int):
     )
 
 
+@app.route("/scan/<int:scan_id>/export.pdf")
+def export_pdf(scan_id: int):
+    scan = storage.get_scan(scan_id)
+    if scan is None:
+        abort(404)
+    result = ScanResult.from_dict(scan)
+    return Response(
+        report_generator.render_pdf(result),
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="wvs-scan-{scan_id}.pdf"'},
+    )
+
+
+# --------------------------------------------------------------------------- #
+# REST API (JSON) — trigger and fetch scans programmatically.
+# --------------------------------------------------------------------------- #
+@app.route("/api/health")
+def api_health():
+    return {"status": "ok", "modules": ALL_MODULES}
+
+
+@app.route("/api/scans")
+def api_list_scans():
+    return {"scans": storage.list_scans()}
+
+
+@app.route("/api/scans/<int:scan_id>")
+def api_get_scan(scan_id: int):
+    scan = storage.get_scan(scan_id)
+    if scan is None:
+        return {"error": "scan not found"}, 404
+    return scan
+
+
+@app.route("/api/scan", methods=["POST"])
+def api_scan():
+    """Run a scan synchronously and return the full result. Body is JSON."""
+    body = request.get_json(silent=True) or {}
+    target = (body.get("target") or "").strip()
+    modules = body.get("modules") or list(ALL_MODULES)
+    if isinstance(modules, str):
+        modules = [m.strip() for m in modules.split(",") if m.strip()]
+
+    if not target.startswith(("http://", "https://")):
+        return {"error": "target must start with http:// or https://"}, 400
+    if not body.get("authorize"):
+        return {"error": "authorize must be true (you confirm permission to scan)"}, 400
+
+    ns = Namespace(
+        target=target,
+        modules=",".join(modules),
+        max_pages=_as_int(body.get("max_pages"), 40),
+        timeout=_as_float(body.get("timeout"), 10.0),
+        delay=_as_float(body.get("delay"), 0.0),
+        no_verify_tls=bool(body.get("no_verify_tls", False)),
+        workers=_as_int(body.get("workers"), 8),
+    )
+    result = run_scan(ns)
+    scan_id = storage.save_scan(result, modules=",".join(modules))
+    payload = result.to_dict()
+    payload["id"] = scan_id
+    return {"scan_id": scan_id, "result": payload}
+
+
 if __name__ == "__main__":
     storage.init_db()
-    app.run(host="127.0.0.1", port=5000, threaded=True, debug=False)
+    host = os.environ.get("WVS_HOST", "127.0.0.1")  # set to 0.0.0.0 in Docker
+    port = int(os.environ.get("WVS_PORT", "5000"))
+    app.run(host=host, port=port, threaded=True, debug=False)

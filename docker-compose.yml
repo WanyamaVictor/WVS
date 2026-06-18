@@ -1,0 +1,14 @@
+services:
+  wvs:
+    build: .
+    image: wvs:latest
+    container_name: wvs
+    ports:
+      - "5000:5000"
+    environment:
+      WVS_HOST: "0.0.0.0"
+      WVS_PORT: "5000"
+    volumes:
+      # Persist scan history (SQLite) across container restarts.
+      - ./reports:/app/reports
+    restart: unless-stopped

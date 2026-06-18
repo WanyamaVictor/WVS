@@ -374,3 +374,58 @@ th.sortable.desc::after { content: " ▼"; color: var(--accent); }
 .panel-head.new::before { color: var(--crit); }
 .panel-head.fixed { color: var(--accent); }
 .up { color: var(--crit); } .down { color: var(--accent); }
+
+/* ===================== dashboard ===================== */
+.dash-actions { margin-bottom: 16px; }
+.btn-primary {
+  background: var(--accent-dk); border: 1px solid var(--accent); color: var(--accent);
+  text-decoration: none; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  padding: 9px 20px; font-size: 13px;
+}
+.btn-primary:hover { background: var(--accent); color: #04130d; }
+
+.cards {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px; margin-bottom: 18px;
+}
+.card { border: 1px solid var(--border); background: var(--panel); padding: 18px 16px; }
+.card-n { font-size: 34px; font-weight: 700; line-height: 1; }
+.card-n.accent { color: var(--accent); }
+.card-u { font-size: 14px; color: var(--dim); font-weight: 400; }
+.card-l {
+  margin-top: 8px; color: var(--dim); font-size: 11px;
+  text-transform: uppercase; letter-spacing: .5px;
+}
+
+.dash-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px;
+}
+@media (max-width: 760px) { .dash-grid { grid-template-columns: 1fr; } }
+
+/* horizontal severity bars */
+.hchart { display: grid; gap: 10px; }
+.hrow { display: grid; grid-template-columns: 70px 1fr 36px; align-items: center; gap: 10px; }
+.hlabel { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+.htrack { background: var(--panel-2); border: 1px solid var(--border); height: 16px; }
+.hbar { height: 100%; min-width: 2px; }
+.hval { text-align: right; font-weight: 700; font-size: 13px; }
+.hlabel.s-critical, .hbar.s-critical { color: var(--crit); }
+.hbar.s-critical { background: var(--crit); }
+.hlabel.s-high, .hbar.s-high { color: var(--high); }    .hbar.s-high { background: var(--high); }
+.hlabel.s-medium, .hbar.s-medium { color: var(--med); } .hbar.s-medium { background: var(--med); }
+.hlabel.s-low, .hbar.s-low { color: var(--low); }       .hbar.s-low { background: var(--low); }
+.hlabel.s-info, .hbar.s-info { color: var(--info); }    .hbar.s-info { background: var(--info); }
+
+/* vertical risk-trend bars */
+.vchart {
+  display: flex; align-items: flex-end; gap: 8px; height: 150px;
+  border-left: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  padding: 0 6px;
+}
+.vcol { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; }
+.vbar-wrap { flex: 1; width: 100%; display: flex; align-items: flex-end; justify-content: center; }
+.vbar { width: 70%; min-height: 2px; }
+.vbar.r0 { background: var(--low); } .vbar.r1 { background: var(--med); }
+.vbar.r2 { background: var(--high); } .vbar.r3, .vbar.r4 { background: var(--crit); }
+.vlabel { font-size: 9px; color: var(--dim); margin-top: 4px; }
+.vscale { display: flex; justify-content: space-between; color: var(--dim); font-size: 9px; margin-top: 6px; }
