@@ -133,3 +133,24 @@ def test_get_many_preserves_order(mocker):
     urls = [f"http://x/{i}" for i in range(20)]
     assert c.get_many(urls) == urls
     c.close()
+
+
+def test_crawler_skips_third_party_apps():
+    from scanner.core.crawler import Crawler
+    c = Crawler(client=None)
+    assert c._is_skipped("http://x/phpmyadmin/index.php") is True
+    assert c._is_skipped("http://x/dashboard/docs/use-sqlite.html") is True
+    assert c._is_skipped("http://x/app/login.php") is False
+
+
+def test_budgeted_map_respects_deadline():
+    import time
+    from scanner.core.concurrency import budgeted_map
+
+    def slow(_):
+        time.sleep(0.02)
+        return 1
+
+    results, skipped = budgeted_map(slow, list(range(60)), workers=4, deadline_s=0.05)
+    assert skipped > 0                       # budget cut work short
+    assert len(results) + skipped == 60      # accounting is exact

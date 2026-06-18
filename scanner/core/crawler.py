@@ -29,16 +29,32 @@ class Page:
     forms: list = field(default_factory=list)   # list[Form]
 
 
+# Third-party / admin apps that are common on shared hosts (esp. XAMPP) but are
+# never the target application. Crawling into them is slow and pure noise, so we
+# don't follow links into them by default (the seed URL is always honored, and
+# the directory/admin modules still flag their existence).
+DEFAULT_SKIP_PATTERNS = (
+    "phpmyadmin", "/pma/", "adminer", "webalizer", "/server-status",
+    "/server-info", "/dashboard/docs/",
+)
+
+
 class Crawler:
-    def __init__(self, client: HttpClient, max_pages: int = 50, same_domain: bool = True):
+    def __init__(self, client: HttpClient, max_pages: int = 50, same_domain: bool = True,
+                 skip_patterns: tuple = DEFAULT_SKIP_PATTERNS):
         self.client = client
         self.max_pages = max_pages
         self.same_domain = same_domain
+        self.skip_patterns = tuple(p.lower() for p in skip_patterns)
 
     def _in_scope(self, base_netloc: str, url: str) -> bool:
         if not self.same_domain:
             return True
         return urlparse(url).netloc == base_netloc
+
+    def _is_skipped(self, url: str) -> bool:
+        path = urlparse(url).path.lower()
+        return any(pat in path for pat in self.skip_patterns)
 
     @staticmethod
     def _normalize(url: str) -> str:
@@ -98,7 +114,8 @@ class Crawler:
                     link = self._normalize(urljoin(url, a["href"]))
                     if not link.startswith(("http://", "https://")):
                         continue
-                    if link not in seen and self._in_scope(base_netloc, link):
+                    if (link not in seen and self._in_scope(base_netloc, link)
+                            and not self._is_skipped(link)):
                         seen.add(link)
                         next_frontier.append(link)
 

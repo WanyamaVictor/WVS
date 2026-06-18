@@ -59,6 +59,20 @@ python -m scanner.main https://your-target.example --authorize \
 Path-based checks and the crawler run **concurrently** (thread pool), so scans
 are much faster on remote targets. Set `--delay` to force polite, sequential mode.
 
+### Performance
+
+The scanner is built to stay fast and bounded even on large/slow targets:
+
+- **Concurrent** crawling and active fuzzing (SQLi/XSS) via a worker pool.
+- The crawler **skips third-party apps** (phpMyAdmin, Adminer, webalizer, …) by
+  default — they're never the target app and crawling them is slow noise.
+- Active modules cap the injectable surface (fields/form, points/module) and run
+  under a **wall-clock budget**, so a pathological page (e.g. a form with
+  hundreds of inputs) can't blow the scan up into minutes. Skipped work is logged.
+
+> Tip: scan your **specific app path** (e.g. `http://localhost/myapp`) rather than
+> a shared web root — it's faster and avoids unrelated apps entirely.
+
 ## Web console
 
 A SOC-style web UI is included (Flask): a dashboard, live streamed scans,
