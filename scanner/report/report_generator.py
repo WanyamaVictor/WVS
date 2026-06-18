@@ -34,6 +34,13 @@ def write_json(result: ScanResult, path: str) -> str:
 
 def write_html(result: ScanResult, path: str) -> str:
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(render_html(result))
+    return path
+
+
+def render_html(result: ScanResult) -> str:
+    """Render the standalone HTML report as a string (used by CLI and web export)."""
     counts = result.counts_by_severity()
 
     rows = []
@@ -99,9 +106,7 @@ def write_html(result: ScanResult, path: str) -> str:
 </body>
 </html>"""
 
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write(doc)
-    return path
+    return doc
 
 
 def _table_or_empty(rows: list) -> str:

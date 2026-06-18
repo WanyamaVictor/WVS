@@ -46,6 +46,20 @@ class Finding:
         d["severity"] = self.severity.value
         return d
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "Finding":
+        return cls(
+            type=d.get("type", ""),
+            severity=Severity(d.get("severity", "info")),
+            endpoint=d.get("endpoint", ""),
+            description=d.get("description", ""),
+            payload=d.get("payload", ""),
+            evidence=d.get("evidence", ""),
+            parameter=d.get("parameter", ""),
+            remediation=d.get("remediation", ""),
+            reference=d.get("reference", ""),
+        )
+
 
 @dataclass
 class ScanResult:
@@ -91,3 +105,14 @@ class ScanResult:
             "counts_by_severity": self.counts_by_severity(),
             "findings": [f.to_dict() for f in self.findings],
         }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ScanResult":
+        result = cls(
+            target=d.get("target", ""),
+            started_at=d.get("started_at", ""),
+            finished_at=d.get("finished_at", ""),
+            pages_crawled=d.get("pages_crawled", 0),
+        )
+        result.findings = [Finding.from_dict(f) for f in d.get("findings", [])]
+        return result

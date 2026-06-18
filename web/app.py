@@ -1,24 +1,26 @@
-"""WVS web console — a thin Flask frontend over the existing scan engine.
+"""WVS web console — Flask frontend over the scan engine.
 
 Run from the project root:
 
-    python -m web.app
-    #  or
-    python web/app.py
+    python -m web.app          # or:  python web/app.py
 
-Then open http://127.0.0.1:5000 in a browser.
+Then open http://127.0.0.1:5000.
 
-This UI reuses scanner.main.run_scan() directly, so it stays in lock-step
-with the CLI: same modules, same findings, same risk score.
+Features
+--------
+* Live, non-blocking scans streamed to the browser over Server-Sent Events.
+* Every scan is persisted to SQLite; browse history, reopen, compare, export.
+* Reuses scanner.main.run_scan() so the UI stays in lock-step with the CLI.
 """
 
 from __future__ import annotations
 
-import contextlib
-import io
+import json
 import os
-import re
+import queue
 import sys
+import threading
+import uuid
 from argparse import Namespace
 
 # Make the project root importable no matter how this file is launched.
@@ -26,99 +28,195 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from flask import Flask, render_template, request  # noqa: E402
+from flask import (  # noqa: E402
+    Flask, Response, abort, redirect, render_template, request, url_for,
+)
 
+from scanner.core import storage  # noqa: E402
+from scanner.core.models import ScanResult, Severity  # noqa: E402
 from scanner.main import ALL_MODULES, run_scan  # noqa: E402
+from scanner.report import report_generator  # noqa: E402
 
 app = Flask(__name__)
 
-_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"]
+SEV_RANK = {s: i for i, s in enumerate(SEVERITY_ORDER)}
 
 
-def _strip_ansi(text: str) -> str:
-    return _ANSI_RE.sub("", text)
+# --------------------------------------------------------------------------- #
+# Background scan jobs (in-memory) feeding the SSE stream.
+# --------------------------------------------------------------------------- #
+class Job:
+    def __init__(self) -> None:
+        self.queue: "queue.Queue[dict]" = queue.Queue()
+        self.scan_id: int | None = None
+        self.error: str | None = None
 
 
-def _as_float(value: str, default: float) -> float:
+JOBS: dict[str, Job] = {}
+
+
+def _as_float(value, default):
     try:
         return float(value)
     except (TypeError, ValueError):
         return default
 
 
-def _as_int(value: str, default: int) -> int:
+def _as_int(value, default):
     try:
         return int(value)
     except (TypeError, ValueError):
         return default
 
 
-@app.route("/", methods=["GET"])
+def _worker(job: Job, ns: Namespace, modules_str: str) -> None:
+    """Run the scan in a thread, forwarding progress events to the job queue."""
+    try:
+        result = run_scan(ns, on_event=job.queue.put)
+        scan_id = storage.save_scan(result, modules=modules_str)
+        job.scan_id = scan_id
+        job.queue.put({
+            "type": "complete",
+            "scan_id": scan_id,
+            "risk_score": result.risk_score,
+            "findings": len(result.findings),
+        })
+    except Exception as exc:  # surface to the client instead of dying silently
+        job.error = f"{exc.__class__.__name__}: {exc}"
+        job.queue.put({"type": "error", "message": job.error})
+
+
+def _sort_findings(findings: list) -> list:
+    return sorted(findings, key=lambda f: SEV_RANK.get(f.get("severity", "info"), 99))
+
+
+# --------------------------------------------------------------------------- #
+# Routes
+# --------------------------------------------------------------------------- #
+@app.route("/")
 def index():
+    recent = storage.list_scans(limit=5)
     return render_template(
-        "index.html",
-        all_modules=ALL_MODULES,
-        selected_modules=ALL_MODULES,
-        form={"target": "", "max_pages": 40, "timeout": 10, "delay": 0},
-        result=None,
-        log="",
-        error=None,
+        "index.html", all_modules=ALL_MODULES, recent=recent,
     )
 
 
-@app.route("/scan", methods=["POST"])
-def scan():
+@app.route("/scan/start", methods=["POST"])
+def scan_start():
     target = (request.form.get("target") or "").strip()
     selected = request.form.getlist("modules") or list(ALL_MODULES)
     authorized = request.form.get("authorize") == "on"
 
-    form = {
-        "target": target,
-        "max_pages": _as_int(request.form.get("max_pages"), 40),
-        "timeout": _as_float(request.form.get("timeout"), 10.0),
-        "delay": _as_float(request.form.get("delay"), 0.0),
-    }
-
-    def _render(result=None, log="", error=None):
-        return render_template(
-            "index.html",
-            all_modules=ALL_MODULES,
-            selected_modules=selected,
-            form=form,
-            result=result,
-            log=log,
-            error=error,
-        )
-
-    # --- Guard rails (mirror the CLI's checks) ---
     if not target.startswith(("http://", "https://")):
-        return _render(error="Target must start with http:// or https://")
+        return {"error": "Target must start with http:// or https://"}, 400
     if not authorized:
-        return _render(
-            error="Authorization required. Confirm you own or have written "
-            "permission to scan this target before launching."
-        )
+        return {"error": "Authorization required. Confirm you own or have written "
+                         "permission to scan this target."}, 400
 
     ns = Namespace(
         target=target,
         modules=",".join(selected),
-        max_pages=form["max_pages"],
-        timeout=form["timeout"],
-        delay=form["delay"],
+        max_pages=_as_int(request.form.get("max_pages"), 40),
+        timeout=_as_float(request.form.get("timeout"), 10.0),
+        delay=_as_float(request.form.get("delay"), 0.0),
         no_verify_tls=request.form.get("no_verify_tls") == "on",
     )
 
-    buf = io.StringIO()
-    try:
-        with contextlib.redirect_stdout(buf):
-            result = run_scan(ns)
-    except Exception as exc:  # surface engine errors in the console, don't 500
-        log = _strip_ansi(buf.getvalue())
-        return _render(error=f"Scan failed: {exc.__class__.__name__}: {exc}", log=log)
+    job_id = uuid.uuid4().hex
+    job = Job()
+    JOBS[job_id] = job
+    threading.Thread(
+        target=_worker, args=(job, ns, ",".join(selected)), daemon=True,
+    ).start()
+    return {"job_id": job_id, "target": target}
 
-    log = _strip_ansi(buf.getvalue())
-    return _render(result=result, log=log)
+
+@app.route("/scan/stream/<job_id>")
+def scan_stream(job_id: str):
+    job = JOBS.get(job_id)
+    if job is None:
+        abort(404)
+
+    def gen():
+        try:
+            while True:
+                event = job.queue.get()
+                yield f"data: {json.dumps(event)}\n\n"
+                if event.get("type") in ("complete", "error"):
+                    break
+        finally:
+            JOBS.pop(job_id, None)
+
+    return Response(
+        gen(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@app.route("/scan/<int:scan_id>")
+def scan_view(scan_id: int):
+    scan = storage.get_scan(scan_id)
+    if scan is None:
+        abort(404)
+    scan["findings"] = _sort_findings(scan.get("findings", []))
+    return render_template("scan_view.html", scan=scan, severity_order=SEVERITY_ORDER)
+
+
+@app.route("/history")
+def history():
+    return render_template("history.html", scans=storage.list_scans())
+
+
+@app.route("/scan/<int:scan_id>/delete", methods=["POST"])
+def scan_delete(scan_id: int):
+    storage.delete_scan(scan_id)
+    return redirect(url_for("history"))
+
+
+@app.route("/compare")
+def compare():
+    a = _as_int(request.args.get("a"), 0)
+    b = _as_int(request.args.get("b"), 0)
+    diff = storage.compare(a, b)
+    if diff is None:
+        abort(404)
+    for bucket in ("added", "removed", "unchanged"):
+        diff[bucket] = _sort_findings(diff[bucket])
+    return render_template("compare.html", diff=diff)
+
+
+@app.route("/scan/<int:scan_id>/export.json")
+def export_json(scan_id: int):
+    scan = storage.get_scan(scan_id)
+    if scan is None:
+        abort(404)
+    payload = json.dumps(scan, indent=2)
+    return Response(
+        payload,
+        mimetype="application/json",
+        headers={"Content-Disposition": f'attachment; filename="wvs-scan-{scan_id}.json"'},
+    )
+
+
+@app.route("/scan/<int:scan_id>/export.html")
+def export_html(scan_id: int):
+    scan = storage.get_scan(scan_id)
+    if scan is None:
+        abort(404)
+    result = ScanResult.from_dict(scan)
+    return Response(
+        report_generator.render_html(result),
+        mimetype="text/html",
+        headers={"Content-Disposition": f'attachment; filename="wvs-scan-{scan_id}.html"'},
+    )
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    storage.init_db()
+    app.run(host="127.0.0.1", port=5000, threaded=True, debug=False)

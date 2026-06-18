@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}WVS // compare #{{ diff.a.id }} vs #{{ diff.b.id }}{% endblock %}
+
+{% macro finding_table(items, kind) %}
+  {% if items %}
+  <table class="data findings">
+    <thead><tr><th>severity</th><th>type</th><th>endpoint</th><th>param</th></tr></thead>
+    <tbody>
+      {% for f in items %}
+      <tr>
+        <td><span class="sev s-{{ f.severity }}">{{ f.severity|upper }}</span></td>
+        <td>{{ f.type }}</td>
+        <td class="mono">{{ f.endpoint }}</td>
+        <td class="mono">{{ f.parameter or '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div class="empty dim">none</div>
+  {% endif %}
+{% endmacro %}
+
+{% block body %}
+  <div class="panel">
+    <div class="panel-head">comparison</div>
+    <div class="panel-body">
+      <div class="cmp-head">
+        <div class="cmp-side">
+          <div class="dim">baseline (A)</div>
+          <div class="mono">#{{ diff.a.id }} · {{ diff.a.target }}</div>
+          <div class="dim small">{{ diff.a.created_at }}</div>
+          <div class="score"><div class="n">{{ diff.a.risk_score }}</div><div class="l">risk</div></div>
+        </div>
+        <div class="cmp-arrow">→</div>
+        <div class="cmp-side">
+          <div class="dim">newer (B)</div>
+          <div class="mono">#{{ diff.b.id }} · {{ diff.b.target }}</div>
+          <div class="dim small">{{ diff.b.created_at }}</div>
+          <div class="score">
+            <div class="n">{{ diff.b.risk_score }}</div>
+            <div class="l">risk
+              {% set delta = diff.b.risk_score - diff.a.risk_score %}
+              {% if delta > 0 %}<span class="up">▲{{ delta }}</span>
+              {% elif delta < 0 %}<span class="down">▼{{ -delta }}</span>
+              {% else %}<span class="dim">=0</span>{% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cmp-summary">
+        <span class="chip-new">+{{ diff.added|length }} new</span>
+        <span class="chip-fixed">−{{ diff.removed|length }} fixed</span>
+        <span class="chip-same">{{ diff.unchanged|length }} unchanged</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head new">new in B (regressions)</div>
+    <div class="panel-body">{{ finding_table(diff.added, 'new') }}</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head fixed">fixed since A</div>
+    <div class="panel-body">{{ finding_table(diff.removed, 'fixed') }}</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">unchanged</div>
+    <div class="panel-body">{{ finding_table(diff.unchanged, 'same') }}</div>
+  </div>
+{% endblock %}

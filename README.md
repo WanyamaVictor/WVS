@@ -15,8 +15,17 @@ target, probes for common issues, and produces a risk-scored report.
 | `headers`   | Flags missing/weak security headers (CSP, HSTS, …)        | Passive  |
 | `directory` | Probes for sensitive paths (`/.env`, `/config`, …)        | Active   |
 | `admin`     | Discovers admin/login panels                              | Active   |
+| `cookies`   | Checks Set-Cookie for HttpOnly / Secure / SameSite        | Passive  |
+| `cors`      | Detects permissive CORS (Origin reflection, credentials)  | Active   |
+| `tls`       | Certificate expiry, weak protocol, plaintext HTTP         | Passive  |
+| `discovery` | robots.txt path disclosure, missing security.txt          | Passive  |
 | `sqli`      | Error-based SQL injection detection                       | Active   |
 | `xss`       | Reflected XSS detection (marker-based)                    | Active   |
+| `redirect`  | Open-redirect detection on redirect-style parameters      | Active   |
+| `csrf`      | Flags POST forms with no anti-CSRF token                  | Passive  |
+
+Every finding now carries **remediation guidance** and an **OWASP/CWE reference**
+(see [scanner/core/remediation.py](scanner/core/remediation.py)).
 
 ## Install
 
@@ -40,11 +49,28 @@ python -m scanner.main https://your-target.example --authorize \
 
 ### Useful flags
 
-- `--modules` — comma-separated: `headers,directory,admin,sqli,xss` or `all`
+- `--modules` — comma-separated: `headers,directory,admin,cookies,cors,tls,discovery,sqli,xss,redirect,csrf` or `all`
 - `--max-pages` — crawler page limit (default 40)
 - `--delay` — seconds between requests (be polite / avoid rate limits)
 - `--timeout` — per-request timeout
 - `--no-verify-tls` — disable TLS verification (for self-signed lab targets)
+
+## Web console
+
+A SOC-style web UI is included (Flask). It runs scans live (streamed progress),
+stores every run, and lets you browse history, compare two runs, and export
+reports.
+
+```bash
+pip install -r requirements.txt
+python -m web.app            # then open http://127.0.0.1:5000
+```
+
+- **Live scans** stream phase-by-phase progress over Server-Sent Events.
+- **History** — every scan is saved to `reports/wvs_history.db` (SQLite).
+- **Compare** two runs to see new / fixed / unchanged findings.
+- **Export** any saved scan as JSON or HTML (or print to PDF from the browser).
+- Reuses the CLI engine (`scanner.main.run_scan`), so results are identical.
 
 ## Architecture
 
@@ -62,6 +88,6 @@ a `ScanResult` with an overall risk score.
 
 ## Roadmap
 
-- Optional Laravel dashboard (scans + vulnerabilities tables, web UI)
-- Stored XSS and CSRF checks
+- Stored XSS checks
 - Authenticated scanning (session/cookie support)
+- Server-side PDF report generation

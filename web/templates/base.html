@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}WVS // Web Vulnerability Scanner{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="brand">WVS<span class="sub"> // WEB VULNERABILITY SCANNER</span></div>
+    <nav class="nav">
+      <a href="{{ url_for('index') }}">console</a>
+      <a href="{{ url_for('history') }}">history</a>
+    </nav>
+  </div>
+
+  {% block body %}{% endblock %}
+
+  <div class="footer">authorized testing only &middot; engine: scanner.run_scan()</div>
+</div>
+{% block scripts %}{% endblock %}
+</body>
+</html>

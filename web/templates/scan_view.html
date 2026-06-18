@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}WVS // scan #{{ scan.id }} {{ scan.target }}{% endblock %}
+
+{% block body %}
+  <!-- ===================== SUMMARY ===================== -->
+  <div class="panel">
+    <div class="panel-head">threat summary &mdash; scan #{{ scan.id }}</div>
+    <div class="panel-body">
+      <div class="summary">
+        <div class="score">
+          <div class="n">{{ scan.risk_score }}</div>
+          <div class="l">risk / 100</div>
+        </div>
+        <div class="stats">
+          {% for sev in severity_order %}
+            <div class="stat s-{{ sev }}">
+              <div class="n">{{ scan.counts_by_severity[sev] }}</div>
+              <div class="l">{{ sev }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="scan-meta">
+        target <span class="mono">{{ scan.target }}</span> &middot;
+        {{ scan.findings|length }} finding(s) &middot;
+        {{ scan.pages_crawled }} page(s) crawled &middot;
+        {{ scan.started_at }} &rarr; {{ scan.finished_at }}
+      </div>
+      <div class="export-row">
+        <a class="btn-sm" href="{{ url_for('export_html', scan_id=scan.id) }}">⭳ HTML</a>
+        <a class="btn-sm" href="{{ url_for('export_json', scan_id=scan.id) }}">⭳ JSON</a>
+        <a class="btn-sm" href="{{ url_for('export_html', scan_id=scan.id) }}" target="_blank"
+           onclick="setTimeout(function(){},0)">⎙ Print / PDF</a>
+        <a class="btn-sm" href="{{ url_for('history') }}">↪ compare in history</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== FINDINGS ===================== -->
+  <div class="panel">
+    <div class="panel-head">findings</div>
+    <div class="panel-body">
+      {% if scan.findings %}
+      <div class="filterbar" id="filterbar">
+        <div class="sevfilters">
+          <button class="fbtn active" data-sev="all">all</button>
+          {% for sev in severity_order %}
+            <button class="fbtn s-{{ sev }}" data-sev="{{ sev }}">{{ sev }}</button>
+          {% endfor %}
+        </div>
+        <input type="text" id="finding-search" placeholder="filter by text / type / endpoint…">
+      </div>
+
+      <table class="data findings" id="findings-table">
+        <thead>
+          <tr>
+            <th data-sort="sev">severity</th>
+            <th data-sort="type">type</th>
+            <th data-sort="endpoint">endpoint</th>
+            <th>param</th>
+            <th>description</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in scan.findings %}
+          {% set ref = (f.reference or '').split(' | ') %}
+          <tr class="finding-row" data-sev="{{ f.severity }}" data-rank="{{ severity_order.index(f.severity) }}"
+              data-text="{{ (f.type ~ ' ' ~ f.endpoint ~ ' ' ~ (f.parameter or '') ~ ' ' ~ f.description)|lower }}">
+            <td><span class="sev s-{{ f.severity }}">{{ f.severity|upper }}</span></td>
+            <td>{{ f.type }}</td>
+            <td class="mono">{{ f.endpoint }}</td>
+            <td class="mono">{{ f.parameter or '-' }}</td>
+            <td class="desc">{{ f.description }} <span class="expand">details ▾</span></td>
+          </tr>
+          <tr class="detail-row" style="display:none">
+            <td colspan="5">
+              <div class="detail">
+                {% if f.payload %}<div><span class="k">payload</span><span class="v mono">{{ f.payload }}</span></div>{% endif %}
+                {% if f.evidence %}<div><span class="k">evidence</span><span class="v mono">{{ f.evidence }}</span></div>{% endif %}
+                <div><span class="k">remediation</span><span class="v">{{ f.remediation or 'Apply the appropriate secure-coding/configuration controls.' }}</span></div>
+                {% if ref|length == 2 %}
+                  <div><span class="k">reference</span><span class="v"><a href="{{ ref[1] }}" target="_blank" rel="noopener">{{ ref[0] }} ↗</a></span></div>
+                {% elif f.reference %}
+                  <div><span class="k">reference</span><span class="v">{{ f.reference }}</span></div>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div id="no-match" class="empty" style="display:none">[ ] No findings match the current filter.</div>
+      {% else %}
+        <div class="empty">[OK] No findings reported.</div>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='findings.js') }}"></script>
+{% endblock %}

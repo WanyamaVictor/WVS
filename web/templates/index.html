@@ -1,41 +1,25 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>WVS // Web Vulnerability Scanner</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-<div class="wrap">
+{% extends "base.html" %}
 
-  <div class="topbar">
-    <div class="brand">WVS<span class="sub"> // WEB VULNERABILITY SCANNER</span></div>
-    <div class="meta">authorized testing only &middot; engine: scanner.run_scan()</div>
-  </div>
-
-  {% if error %}
-    <div class="banner">{{ error }}</div>
-  {% endif %}
+{% block body %}
+  <div id="error-banner" class="banner" style="display:none"></div>
 
   <!-- ===================== SCAN CONFIG ===================== -->
-  <form class="panel" method="post" action="{{ url_for('scan') }}">
+  <form id="scan-form" class="panel">
     <div class="panel-head">target acquisition</div>
     <div class="panel-body">
       <label class="field">
         <span class="lbl">target url</span>
         <input type="text" name="target" placeholder="http://localhost"
-               value="{{ form.target }}" autocomplete="off" autofocus>
+               autocomplete="off" autofocus>
       </label>
 
       <div style="margin-top:14px">
-        <span class="lbl" style="display:block;color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">modules</span>
+        <span class="lbl-static">modules</span>
         <div class="modules">
+          <label class="chk all"><input type="checkbox" id="mod-all" checked> all</label>
           {% for m in all_modules %}
             <label class="chk">
-              <input type="checkbox" name="modules" value="{{ m }}"
-                     {% if m in selected_modules %}checked{% endif %}>
-              {{ m }}
+              <input type="checkbox" name="modules" value="{{ m }}" checked> {{ m }}
             </label>
           {% endfor %}
         </div>
@@ -44,105 +28,65 @@
       <div class="grid" style="margin-top:16px">
         <label class="field">
           <span class="lbl">max pages</span>
-          <input type="number" name="max_pages" value="{{ form.max_pages }}" min="1" step="1">
+          <input type="number" name="max_pages" value="40" min="1" step="1">
         </label>
         <label class="field">
           <span class="lbl">timeout (s)</span>
-          <input type="number" name="timeout" value="{{ form.timeout }}" min="1" step="0.5">
+          <input type="number" name="timeout" value="10" min="1" step="0.5">
         </label>
         <label class="field">
           <span class="lbl">delay (s)</span>
-          <input type="number" name="delay" value="{{ form.delay }}" min="0" step="0.1">
+          <input type="number" name="delay" value="0" min="0" step="0.1">
         </label>
       </div>
 
       <div class="toggles">
-        <label class="chk">
-          <input type="checkbox" name="no_verify_tls"> disable TLS verify
-        </label>
-        <label class="chk">
-          <input type="checkbox" name="authorize"> I am authorized to scan this target
-        </label>
+        <label class="chk"><input type="checkbox" name="no_verify_tls"> disable TLS verify</label>
+        <label class="chk"><input type="checkbox" name="authorize"> I am authorized to scan this target</label>
       </div>
 
       <div class="actions">
-        <button type="submit">Launch Scan</button>
-        <span class="hint">active modules (sqli/xss) send test payloads — own/permitted targets only</span>
+        <button type="submit" id="launch-btn">Launch Scan</button>
+        <span class="hint">active modules (sqli/xss/redirect) send test payloads — own/permitted targets only</span>
       </div>
     </div>
   </form>
 
-  {% if result %}
-  <!-- ===================== SUMMARY ===================== -->
-  <div class="panel">
-    <div class="panel-head">threat summary</div>
+  <!-- ===================== LIVE PROGRESS ===================== -->
+  <div id="progress-panel" class="panel" style="display:none">
+    <div class="panel-head">live scan <span id="prog-target" class="dim"></span></div>
     <div class="panel-body">
-      <div class="summary">
-        <div class="score">
-          <div class="n">{{ result.risk_score }}</div>
-          <div class="l">risk / 100</div>
-        </div>
-        <div class="stats">
-          {% set counts = result.counts_by_severity() %}
-          {% for sev in ['critical','high','medium','low','info'] %}
-            <div class="stat s-{{ sev }}">
-              <div class="n">{{ counts[sev] }}</div>
-              <div class="l">{{ sev }}</div>
-            </div>
-          {% endfor %}
-        </div>
-      </div>
-      <div class="scan-meta">
-        target {{ result.target }} &middot;
-        {{ result.findings|length }} finding(s) &middot;
-        {{ result.pages_crawled }} page(s) crawled &middot;
-        {{ result.started_at }} &rarr; {{ result.finished_at }}
-      </div>
+      <div class="progressbar"><div id="prog-fill" class="progressbar-fill"></div></div>
+      <div id="prog-label" class="prog-label">initializing…</div>
+      <pre id="prog-log" class="console"></pre>
     </div>
   </div>
 
-  <!-- ===================== FINDINGS ===================== -->
+  <!-- ===================== RECENT ===================== -->
+  {% if recent %}
   <div class="panel">
-    <div class="panel-head">findings</div>
-    <div class="panel-body">
-      {% if result.findings %}
-      <table>
-        <thead>
-          <tr>
-            <th>severity</th><th>type</th><th>endpoint</th>
-            <th>param</th><th>description</th><th>payload</th>
-          </tr>
-        </thead>
+    <div class="panel-head">recent scans</div>
+    <div class="panel-body" style="padding:0">
+      <table class="data">
+        <thead><tr><th>#</th><th>target</th><th>risk</th><th>findings</th><th>when</th><th></th></tr></thead>
         <tbody>
-          {% for f in result.findings|sort(attribute='severity.score', reverse=True) %}
+          {% for s in recent %}
           <tr>
-            <td><span class="sev s-{{ f.severity.value }}">{{ f.severity.value|upper }}</span></td>
-            <td>{{ f.type }}</td>
-            <td class="mono">{{ f.endpoint }}</td>
-            <td class="mono">{{ f.parameter or '-' }}</td>
-            <td class="desc">{{ f.description }}</td>
-            <td class="payload mono">{{ f.payload or '-' }}</td>
+            <td class="mono">{{ s.id }}</td>
+            <td class="mono">{{ s.target }}</td>
+            <td><span class="riskpill r{{ (s.risk_score // 25) }}">{{ s.risk_score }}</span></td>
+            <td>{{ s.findings_count }}</td>
+            <td class="dim">{{ s.created_at }}</td>
+            <td><a href="{{ url_for('scan_view', scan_id=s.id) }}">open »</a></td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
-      {% else %}
-        <div class="empty">[OK] No findings reported.</div>
-      {% endif %}
     </div>
   </div>
   {% endif %}
+{% endblock %}
 
-  {% if log %}
-  <!-- ===================== CONSOLE ===================== -->
-  <div class="panel">
-    <div class="panel-head">scan log</div>
-    <div class="panel-body" style="padding:0">
-      <pre class="console">{{ log }}</pre>
-    </div>
-  </div>
-  {% endif %}
-
-</div>
-</body>
-</html>
+{% block scripts %}
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}WVS // scan history{% endblock %}
+
+{% block body %}
+  {% if scans %}
+  <div class="panel">
+    <div class="panel-head">compare runs</div>
+    <div class="panel-body">
+      <form class="comparebar" action="{{ url_for('compare') }}" method="get">
+        <label class="field inline">
+          <span class="lbl">baseline (A)</span>
+          <select name="a">
+            {% for s in scans %}<option value="{{ s.id }}">#{{ s.id }} · {{ s.target }} · risk {{ s.risk_score }} · {{ s.created_at }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="field inline">
+          <span class="lbl">newer (B)</span>
+          <select name="b">
+            {% for s in scans %}<option value="{{ s.id }}" {% if loop.first and scans|length > 1 %}{% endif %}>#{{ s.id }} · {{ s.target }} · risk {{ s.risk_score }} · {{ s.created_at }}</option>{% endfor %}
+          </select>
+        </label>
+        <button type="submit">Compare</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">scan history ({{ scans|length }})</div>
+    <div class="panel-body" style="padding:0">
+      <table class="data">
+        <thead>
+          <tr>
+            <th>#</th><th>target</th><th>risk</th>
+            <th>C</th><th>H</th><th>M</th><th>L</th><th>I</th>
+            <th>modules</th><th>when</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in scans %}
+          <tr>
+            <td class="mono">{{ s.id }}</td>
+            <td class="mono">{{ s.target }}</td>
+            <td><span class="riskpill r{{ (s.risk_score // 25) }}">{{ s.risk_score }}</span></td>
+            <td class="c-crit">{{ s.critical }}</td>
+            <td class="c-high">{{ s.high }}</td>
+            <td class="c-med">{{ s.medium }}</td>
+            <td class="c-low">{{ s.low }}</td>
+            <td class="c-info">{{ s.info }}</td>
+            <td class="dim mono small">{{ s.modules }}</td>
+            <td class="dim">{{ s.created_at }}</td>
+            <td class="rowactions">
+              <a href="{{ url_for('scan_view', scan_id=s.id) }}">open</a>
+              <form action="{{ url_for('scan_delete', scan_id=s.id) }}" method="post"
+                    onsubmit="return confirm('Delete scan #{{ s.id }}?')">
+                <button type="submit" class="link-danger">del</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="panel">
+    <div class="panel-head">scan history</div>
+    <div class="panel-body">
+      <div class="empty">No scans yet. Run one from the <a href="{{ url_for('index') }}">console</a>.</div>
+    </div>
+  </div>
+  {% endif %}
+{% endblock %}
