@@ -130,6 +130,6 @@
           else if (s.status === "error") failed(s.error);
         })
         .catch(function () { /* transient; try again next tick */ });
-    }, 3000);
+    }, 1200);
   }
 })();

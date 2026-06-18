@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeout
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -131,28 +132,39 @@ class HttpClient:
         return self.request("POST", url, data=data, headers=headers, **kwargs)
 
     def get_many(self, urls: list, allow_redirects: bool = True,
-                 headers: Optional[dict] = None) -> list:
+                 headers: Optional[dict] = None, deadline_s: Optional[float] = None) -> list:
         """GET many URLs, returning Responses in the same order as ``urls``.
 
-        Runs concurrently with up to ``self.workers`` threads. Falls back to a
-        sequential pass when a delay is configured (to stay polite) or only one
-        worker is allowed.
+        Runs concurrently with up to ``self.workers`` threads. ``deadline_s``
+        bounds the total wall-clock: URLs not fetched in time get ``None`` (so a
+        slow/blocking target can't make a path-probe module run for minutes).
+        Falls back to a sequential pass when a delay is configured (politeness)
+        or only one worker is allowed.
         """
         if not urls:
             return []
         if self.workers <= 1 or self.delay > 0:
-            return [self.get(u, allow_redirects=allow_redirects, headers=headers)
-                    for u in urls]
+            results, start = [], time.monotonic()
+            for u in urls:
+                if deadline_s is not None and time.monotonic() - start > deadline_s:
+                    break
+                results.append(self.get(u, allow_redirects=allow_redirects, headers=headers))
+            results.extend([None] * (len(urls) - len(results)))
+            return results
 
         results: list = [None] * len(urls)
-
-        def _fetch(item):
-            idx, url = item
-            return idx, self.get(url, allow_redirects=allow_redirects, headers=headers)
-
-        with ThreadPoolExecutor(max_workers=self.workers) as pool:
-            for idx, resp in pool.map(_fetch, enumerate(urls)):
-                results[idx] = resp
+        pool = ThreadPoolExecutor(max_workers=self.workers)
+        futures = {
+            pool.submit(self.get, u, allow_redirects=allow_redirects, headers=headers): i
+            for i, u in enumerate(urls)
+        }
+        try:
+            for fut in as_completed(futures, timeout=deadline_s):
+                results[futures[fut]] = fut.result()
+        except FuturesTimeout:
+            pass  # deadline hit; unfetched URLs stay None
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
         return results
 
     def close(self) -> None:

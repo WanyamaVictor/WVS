@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
+from ..core.concurrency import budgeted_map
 from ..core.http_client import HttpClient
 from ..core.models import Finding, Severity
 
@@ -56,8 +57,8 @@ def _probe(client: HttpClient, url: str, params: dict, param: str):
 
 
 def scan(client: HttpClient, pages: list) -> list:
-    findings: list = []
     seen: set = set()
+    probes: list = []
 
     for i, page in enumerate(pages):
         # Real parameters discovered on the page.
@@ -71,8 +72,13 @@ def scan(client: HttpClient, pages: list) -> list:
             if key in seen:
                 continue
             seen.add(key)
-            hit = _probe(client, page.url, page.params, param)
-            if hit:
-                findings.append(hit)
+            probes.append((page.url, page.params, param))
 
-    return findings
+    results, _ = budgeted_map(
+        lambda t: _probe(client, t[0], t[1], t[2]),
+        probes,
+        workers=getattr(client, "workers", 8),
+        deadline_s=12.0,
+        sequential=getattr(client, "delay", 0) > 0,
+    )
+    return [r for r in results if r]

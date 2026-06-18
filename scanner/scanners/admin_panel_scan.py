@@ -22,7 +22,7 @@ def scan(client: HttpClient, target: str) -> list:
     base = target if target.endswith("/") else target + "/"
 
     urls = [urljoin(base, path) for path in ADMIN_PATHS]
-    responses = client.get_many(urls, allow_redirects=True)
+    responses = client.get_many(urls, allow_redirects=True, deadline_s=12.0)
 
     for path, resp in zip(ADMIN_PATHS, responses):
         if resp is None or resp.status_code not in (200, 301, 302, 401, 403):

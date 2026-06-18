@@ -135,6 +135,23 @@ def test_get_many_preserves_order(mocker):
     c.close()
 
 
+def test_get_many_respects_deadline(mocker):
+    import time
+    from scanner.core.http_client import HttpClient
+    c = HttpClient(workers=4)
+
+    def slow(_u, **k):
+        time.sleep(0.05)
+        return "ok"
+
+    mocker.patch.object(c, "get", side_effect=slow)
+    urls = [f"http://x/{i}" for i in range(60)]
+    out = c.get_many(urls, deadline_s=0.1)
+    assert len(out) == 60               # length preserved
+    assert any(r is None for r in out)  # budget left some unfetched
+    c.close()
+
+
 def test_crawler_skips_third_party_apps():
     from scanner.core.crawler import Crawler
     c = Crawler(client=None)
